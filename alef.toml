@@ -1311,7 +1311,7 @@ returns_result = true
 streaming = true
 options_type = "CrawlConfig"
 select_when = { category = "stream" }
-skip_languages = ["wasm", "c", "crystal"]
+skip_languages = ["wasm", "c"]
 result_fields = ["url", "event_type", "page", "error", "final_url", "result", "pages_crawled"]
 
 [[crates.e2e.calls.crawl_stream.args]]
@@ -1389,7 +1389,7 @@ returns_result = true
 streaming = true
 options_type = "CrawlConfig"
 select_when = { category = "stream", id_prefix = "batch_crawl_stream" }
-skip_languages = ["wasm", "elixir", "zig", "swift", "brew", "c", "crystal"]
+skip_languages = ["wasm", "elixir", "zig", "swift", "brew", "c"]
 result_fields = ["url", "event_type", "page", "error", "final_url", "result", "pages_crawled"]
 
 [[crates.e2e.calls.batch_crawl_stream.args]]

@@ -32,6 +32,12 @@ class AlefMockServer
     # MOCK_SERVER_NO_STDIN_WATCH makes the server block on SIGTERM (not stdin
     # EOF), so the Crystal spec process can reap it cleanly in after_suite.
     pid = Process.new(mock_server_path, [fixtures_path], output: writer, env: {"MOCK_SERVER_NO_STDIN_WATCH" => "1"})
+    # chdir to the test_documents directory so fixture file paths like
+    # "pdf/fake_memo.pdf" resolve correctly — mirrors Go's os.Chdir in TestMain.
+    test_docs = File.join(__DIR__, "..", "..", "..", "test_documents")
+    if Dir.exists?(test_docs)
+      Dir.cd(test_docs)
+    end
     writer.close
     line = reader.gets
     if line && line.starts_with?("MOCK_SERVER_URL=")
