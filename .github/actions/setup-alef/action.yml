@@ -35,7 +35,7 @@ runs:
       shell: bash
       working-directory: alef
       run: |
-        cargo build --release -p alef --bin alef
+        cargo build --release -p alef
 
     - name: Add alef to PATH
       shell: bash
