@@ -36,17 +36,18 @@ describe Crawlberg do
     it "CrawlEngine with defaults streams events like the free function" do
       engine = Crawlberg.create_engine(Crawlberg::CrawlConfig.from_json("{\"max_depth\":1}"))
       url = ENV["MOCK_SERVER_ENGINE_STREAM_BASIC"]? || (ENV["MOCK_SERVER_URL"]? || "") + "/fixtures/engine_stream_basic"
-      __result_events = [] of Crawlberg::CrawlEvent
+      __result_chunks = [] of Crawlberg::CrawlEvent
       __ch = engine.crawl_stream(Crawlberg::CrawlStreamRequest.from_json("{\"url\": #{url.to_json}}"))
       while (__ev = __ch.receive?) && !__ev.is_a?(Nil)
-        __result_events << __ev
+        __result_chunks << __ev
       end
       __result = {
-        "event_count_min" => __result_events.size,
-        "has_page_event" => __result_events.any? { |e| e.is_a?(Crawlberg::CrawlEvent::Page) },
-        "has_error_event" => __result_events.any? { |e| e.is_a?(Crawlberg::CrawlEvent::Error) },
-        "has_complete_event" => __result_events.any? { |e| e.is_a?(Crawlberg::CrawlEvent::Complete) },
-      } of String => Int32 | Bool
+        "chunks" => __result_chunks,
+        "event_count_min" => __result_chunks.size,
+        "has_page_event" => __result_chunks.any? { |e| e.is_a?(Crawlberg::CrawlEvent::Page) },
+        "has_error_event" => __result_chunks.any? { |e| e.is_a?(Crawlberg::CrawlEvent::Error) },
+        "has_complete_event" => __result_chunks.any? { |e| e.is_a?(Crawlberg::CrawlEvent::Complete) }
+      } of String => Array(Crawlberg::CrawlEvent) | String | Int32 | Bool
       __result["has_page_event"].as(Bool).should be_true
       __result["has_complete_event"].as(Bool).should be_true
       (__result["event_count_min"].as(Int32) || 0).should be >= 3

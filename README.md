@@ -54,6 +54,9 @@
   <a href="https://github.com/xberg-io/crawlberg/tree/main/packages/zig">
     <img src="https://img.shields.io/badge/Zig-package-007ec6" alt="Zig">
   </a>
+  <a href="https://github.com/xberg-io/crawlberg/tree/main/packages/crystal">
+    <img src="https://img.shields.io/badge/Crystal-shards-007ec6" alt="Crystal">
+  </a>
   <a href="https://github.com/xberg-io/crawlberg/releases">
     <img src="https://img.shields.io/badge/C-FFI-007ec6" alt="C FFI">
   </a>
