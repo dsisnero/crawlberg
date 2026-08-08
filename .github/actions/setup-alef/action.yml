@@ -49,4 +49,3 @@ runs:
       shell: bash
       run: |
         echo "${{ runner.temp }}/alef/target/release" >> "$GITHUB_PATH"
-        alef --version
