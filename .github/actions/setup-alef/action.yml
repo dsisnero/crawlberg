@@ -24,7 +24,7 @@ runs:
       with:
         repository: ${{ inputs.repo }}
         ref: ${{ inputs.ref }}
-        path: alef
+        path: ${{ runner.temp }}/alef
 
     - name: Setup Rust
       uses: xberg-io/actions/setup-rust@v1
@@ -33,12 +33,12 @@ runs:
 
     - name: Build alef (release)
       shell: bash
-      working-directory: alef
+      working-directory: ${{ runner.temp }}/alef
       run: |
         cargo build --release -p alef
 
     - name: Add alef to PATH
       shell: bash
       run: |
-        echo "$GITHUB_WORKSPACE/alef/target/release" >> "$GITHUB_PATH"
+        echo "${{ runner.temp }}/alef/target/release" >> "$GITHUB_PATH"
         alef --version
