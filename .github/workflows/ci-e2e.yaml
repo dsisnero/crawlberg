@@ -46,7 +46,7 @@ permissions:
 jobs:
   build-ffi:
     name: Build FFI (${{ matrix.target }})
-    if: github.repository == 'xberg-io/crawlberg' && github.actor != 'dependabot[bot]'
+    if: github.actor != 'dependabot[bot]'
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 120 || 60 }}
     strategy:
@@ -108,7 +108,7 @@ jobs:
 
   e2e-tests:
     name: E2E (${{ matrix.lang }})
-    if: github.repository == 'xberg-io/crawlberg' && github.actor != 'dependabot[bot]'
+    if: github.actor != 'dependabot[bot]'
     needs: [build-ffi]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
