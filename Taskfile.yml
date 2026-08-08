@@ -37,6 +37,8 @@ includes:
     taskfile: .task/languages/swift.yml
   zig:
     taskfile: .task/languages/zig.yml
+  crystal:
+    taskfile: .task/languages/crystal.yml
 
   _build_wf:
     taskfile: .task/workflows/build.yml

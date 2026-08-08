@@ -1,0 +1,43 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install Crystal dependencies
+    dir: packages/crystal
+    precondition: "command -v crystal >/dev/null 2>&1"
+    cmds:
+      - shards install
+
+  setup:
+    desc: Setup Crystal environment
+    cmds:
+      - task: crystal:install
+
+  build:
+    desc: Build Crystal package (depends on Rust FFI)
+    dir: packages/crystal
+    precondition: "command -v crystal >/dev/null 2>&1"
+    cmds:
+      - cargo build --release -p crawlberg-ffi
+      - shards build
+
+  build:dev:
+    desc: Build Crystal package in debug mode
+    dir: packages/crystal
+    precondition: "command -v crystal >/dev/null 2>&1"
+    cmds:
+      - cargo build -p crawlberg-ffi
+      - shards build
+
+  test:
+    desc: Run Crystal unit tests
+    dir: packages/crystal
+    precondition: "command -v crystal >/dev/null 2>&1"
+    cmds:
+      - crystal spec
+
+  e2e:test:
+    desc: Run generated Crystal E2E tests
+    precondition: "command -v crystal >/dev/null 2>&1"
+    cmds:
+      - alef test --e2e --lang crystal

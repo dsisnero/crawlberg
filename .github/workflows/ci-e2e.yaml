@@ -158,6 +158,9 @@ jobs:
           - lang: zig
             zig-version: "0.16.0"
             test-cmd: "task zig:e2e:test"
+          - lang: crystal
+            crystal-version: "1.19.1"
+            test-cmd: "task crystal:e2e:test"
           - lang: brew
             test-cmd: "task brew:e2e:test"
     steps:
@@ -316,6 +319,12 @@ jobs:
         with:
           version: ${{ matrix.zig-version }}
 
+      - name: Setup Crystal
+        if: matrix.crystal-version
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: ${{ matrix.crystal-version }}
+
       - name: Setup wasm-pack
         if: matrix.lang == 'wasm'
         uses: xberg-io/actions/setup-wasm-pack@v1
@@ -328,7 +337,8 @@ jobs:
           matrix.lang == 'go' || matrix.lang == 'java' ||
           matrix.lang == 'csharp' || matrix.lang == 'elixir' ||
           matrix.lang == 'c' || matrix.lang == 'swift' ||
-          matrix.lang == 'zig' || matrix.lang == 'dart'
+          matrix.lang == 'zig' || matrix.lang == 'dart' ||
+          matrix.lang == 'crystal'
         shell: bash
         run: |
           export PKG_CONFIG_PATH="${PWD}/crates/crawlberg-ffi:${PKG_CONFIG_PATH}"
@@ -341,6 +351,10 @@ jobs:
 
       - name: Install Task
         uses: xberg-io/actions/install-task@v1
+
+      - name: Install alef CLI
+        if: matrix.lang == 'crystal'
+        uses: xberg-io/actions/install-alef@v1
 
       - name: Compile Ruby native extension
         if: matrix.lang == 'ruby'
