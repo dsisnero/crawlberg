@@ -1,0 +1,44 @@
+name: Setup alef (fork build)
+description: >
+  Build the alef CLI from the dsisnero fork's crystal-all-fixtures branch so CI
+  can verify the unreleased Crystal backend end-to-end before merging upstream.
+  Replaces xberg-io/actions/install-alef@v1 (which only installs released alef).
+inputs:
+  ref:
+    description: alef git ref to build
+    required: false
+    default: crystal-all-fixtures
+  repo:
+    description: alef fork repo (owner/name)
+    required: false
+    default: dsisnero/alef
+  rust-cache-key:
+    description: cache key prefix for the Rust build
+    required: false
+    default: alef-fork
+runs:
+  using: composite
+  steps:
+    - name: Checkout alef fork
+      uses: actions/checkout@v6
+      with:
+        repository: ${{ inputs.repo }}
+        ref: ${{ inputs.ref }}
+        path: alef
+
+    - name: Setup Rust
+      uses: xberg-io/actions/setup-rust@v1
+      with:
+        cache-key-prefix: ${{ inputs.rust-cache-key }}
+
+    - name: Build alef (release)
+      shell: bash
+      working-directory: alef
+      run: |
+        cargo build --release -p alef --bin alef
+
+    - name: Add alef to PATH
+      shell: bash
+      run: |
+        echo "$GITHUB_WORKSPACE/alef/target/release" >> "$GITHUB_PATH"
+        alef --version

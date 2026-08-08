@@ -352,9 +352,9 @@ jobs:
       - name: Install Task
         uses: xberg-io/actions/install-task@v1
 
-      - name: Install alef CLI
+      - name: Install alef CLI (fork build — verifies unreleased Crystal backend)
         if: matrix.lang == 'crystal'
-        uses: xberg-io/actions/install-alef@v1
+        uses: ./.github/actions/setup-alef
 
       - name: Compile Ruby native extension
         if: matrix.lang == 'ruby'
