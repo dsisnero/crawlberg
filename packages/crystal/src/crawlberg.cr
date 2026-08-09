@@ -135,6 +135,220 @@ end
 module Crawlberg
   VERSION = "1.1.4"
 
+  # When to use the headless browser fallback.
+  enum BrowserMode
+    Auto
+    Always
+    Never
+    Stealth
+  end
+
+  # Wait strategy for browser page rendering.
+  enum BrowserWait
+    NetworkIdle
+    Selector
+    Fixed
+  end
+
+  # Browser backend used for JavaScript rendering.
+  enum BrowserBackend
+    Chromiumoxide
+    Native
+  end
+
+  # Authentication configuration.
+  abstract class AuthConfig
+    include JSON::Serializable
+    use_json_discriminator "type", {"basic" => AuthConfig::Basic, "bearer" => AuthConfig::Bearer, "header" => AuthConfig::Header}
+  end
+
+  class AuthConfig::Basic < AuthConfig
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "basic"
+    getter username : String = ""
+    getter password : String = ""
+  end
+
+  class AuthConfig::Bearer < AuthConfig
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "bearer"
+    getter token : String = ""
+  end
+
+  class AuthConfig::Header < AuthConfig
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "header"
+    getter name : String = ""
+    getter value : String = ""
+  end
+
+  # The classification of a link.
+  enum LinkType
+    Internal
+    External
+    Anchor
+    Document
+  end
+
+  # The source of an image reference.
+  enum ImageSource
+    Img
+    PictureSource
+    OgImage
+    TwitterImage
+  end
+  module ImageSourceConverter
+    def self.from_json(pull : JSON::PullParser) : ImageSource
+      case pull.read_string
+      when "img" then ImageSource::Img
+      when "picture_source" then ImageSource::PictureSource
+      when "og:image" then ImageSource::OgImage
+      when "twitter:image" then ImageSource::TwitterImage
+      else pull.raise "Unknown ImageSource value"
+      end
+    end
+    def self.to_json(value : ImageSource, json : JSON::Builder)
+      json.string(case value
+      when ImageSource::Img then "img"
+      when ImageSource::PictureSource then "picture_source"
+      when ImageSource::OgImage then "og:image"
+      when ImageSource::TwitterImage then "twitter:image"
+      end)
+    end
+  end
+
+  # The type of a feed (RSS, Atom, or JSON Feed).
+  enum FeedType
+    Rss
+    Atom
+    JsonFeed
+  end
+
+  # The category of a downloaded asset.
+  enum AssetCategory
+    Document
+    Image
+    Audio
+    Video
+    Font
+    Stylesheet
+    Script
+    Archive
+    Data
+    Other
+  end
+
+  # An event emitted during a streaming crawl operation.
+  #
+  # Not available on `wasm32` targets — streaming requires native concurrency
+  # primitives (tokio channels, `JoinSet`) that are not supported on wasm32.
+  #
+  # Delivered to bindings through each target's native streaming idiom.
+  abstract class CrawlEvent
+    include JSON::Serializable
+    use_json_discriminator "type", {"page" => CrawlEvent::Page, "error" => CrawlEvent::Error, "complete" => CrawlEvent::Complete}
+  end
+
+  class CrawlEvent::Page < CrawlEvent
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "page"
+    getter result : Crawlberg::CrawlPageResult
+  end
+
+  class CrawlEvent::Error < CrawlEvent
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "error"
+    getter url : String = ""
+    getter error : String = ""
+  end
+
+  class CrawlEvent::Complete < CrawlEvent
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "complete"
+    getter pages_crawled : UInt64 = 0
+  end
+
+  # A single page interaction action.
+  #
+  # Actions are serialized with a `type` tag using camelCase naming,
+  # except `ExecuteJs` which is explicitly renamed to `"executeJs"`.
+  abstract class PageAction
+    include JSON::Serializable
+    use_json_discriminator "type", {"click" => PageAction::Click, "type" => PageAction::TypeText, "press" => PageAction::Press, "scroll" => PageAction::Scroll, "wait" => PageAction::Wait, "screenshot" => PageAction::Screenshot, "executeJs" => PageAction::ExecuteJs, "scrape" => PageAction::Scrape}
+  end
+
+  class PageAction::Click < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "click"
+    getter selector : String = ""
+  end
+
+  class PageAction::TypeText < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "type"
+    getter selector : String = ""
+    getter text : String = ""
+  end
+
+  class PageAction::Press < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "press"
+    getter key : String = ""
+  end
+
+  class PageAction::Scroll < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "scroll"
+    getter direction : Crawlberg::ScrollDirection
+    getter selector : String?
+    getter amount : Int64?
+  end
+
+  class PageAction::Wait < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "wait"
+    getter milliseconds : Int64?
+    getter selector : String?
+  end
+
+  class PageAction::Screenshot < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "screenshot"
+    @[JSON::Field(key: "fullPage")]
+    getter full_page : Bool?
+  end
+
+  class PageAction::ExecuteJs < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "executeJs"
+    getter script : String = ""
+  end
+
+  class PageAction::Scrape < PageAction
+    include JSON::Serializable
+    @[JSON::Field(key: "type")]
+    getter type_ : String = "scrape"
+  end
+
+  # Direction for a scroll action.
+  enum ScrollDirection
+    Up
+    Down
+  end
+
   # Metadata about an LLM extraction pass.
   class ExtractionMeta
     include JSON::Serializable
@@ -148,6 +362,14 @@ module Crawlberg
     getter model : String?
     # Number of content chunks sent to the LLM.
     getter chunks_processed : UInt64 = 0
+    def initialize(
+      @cost : Float64? = nil,
+      @prompt_tokens : UInt64? = nil,
+      @completion_tokens : UInt64? = nil,
+      @model : String? = nil,
+      @chunks_processed : UInt64 = 0
+    )
+    end
   end
 
   # Proxy configuration for HTTP requests.
@@ -159,6 +381,12 @@ module Crawlberg
     getter username : String?
     # Optional password for proxy authentication.
     getter password : String?
+    def initialize(
+      @url : String = "",
+      @username : String? = nil,
+      @password : String? = nil
+    )
+    end
   end
 
   # Content extraction and conversion configuration.
@@ -203,6 +431,21 @@ module Crawlberg
     getter wrap_width : UInt64 = 80
     # Include document structure tree in output. Default: `true`.
     getter include_document_structure : Bool = true
+    def initialize(
+      @output_format : String = "markdown",
+      @preprocessing_preset : String = "standard",
+      @remove_navigation : Bool = true,
+      @remove_forms : Bool = true,
+      @strip_tags : Array(String) = [] of String,
+      @preserve_tags : Array(String) = [] of String,
+      @exclude_selectors : Array(String) = [] of String,
+      @skip_images : Bool = false,
+      @max_depth : UInt64? = nil,
+      @wrap : Bool = false,
+      @wrap_width : UInt64 = 80,
+      @include_document_structure : Bool = true
+    )
+    end
   end
 
   # Browser fallback configuration.
@@ -245,6 +488,22 @@ module Crawlberg
     # requests so cookies + fingerprint + solved challenges persist.
     # Default: true. When false, each request gets a fresh Page.
     getter session_affinity : Bool = true
+    def initialize(
+      @mode : BrowserMode = BrowserMode::Auto,
+      @backend : BrowserBackend = BrowserBackend::Chromiumoxide,
+      @endpoint : String? = nil,
+      @timeout : Int64 = 30000,
+      @wait : BrowserWait = BrowserWait::NetworkIdle,
+      @wait_selector : String? = nil,
+      @extra_wait : Int64? = nil,
+      @proxy : ProxyConfig? = nil,
+      @block_url_patterns : Array(String) = [] of String,
+      @eval_script : String? = nil,
+      @robots_user_agent : String? = nil,
+      @capture_network_events : Bool = false,
+      @session_affinity : Bool = true
+    )
+    end
   end
 
   # Configuration for crawl, scrape, and map operations.
@@ -345,6 +604,48 @@ module Crawlberg
     # bindings. `allowlist` is skipped (see `SsrfPolicy` fields) and will be
     # added in a follow-up when `HostMatcher`'s tagged-enum FFI form is decided.
     getter ssrf : SsrfPolicy = SsrfPolicy.from_json("{}")
+    def initialize(
+      @max_depth : UInt64? = nil,
+      @max_pages : UInt64? = nil,
+      @max_concurrent : UInt64? = nil,
+      @respect_robots_txt : Bool = false,
+      @soft_http_errors : Bool = false,
+      @user_agent : String? = nil,
+      @stay_on_domain : Bool = false,
+      @allow_subdomains : Bool = false,
+      @include_paths : Array(String) = [] of String,
+      @exclude_paths : Array(String) = [] of String,
+      @custom_headers : Hash(String, String) = {} of String => String,
+      @request_timeout : Int64 = 30000,
+      @rate_limit_ms : UInt64? = nil,
+      @max_redirects : UInt64 = 10,
+      @retry_count : UInt64 = 0,
+      @retry_codes : Array(UInt16) = [] of UInt16,
+      @cookies_enabled : Bool = false,
+      @auth : AuthConfig? = nil,
+      @max_body_size : UInt64? = nil,
+      @remove_tags : Array(String) = [] of String,
+      @content : ContentConfig = ContentConfig.from_json("{}"),
+      @map_limit : UInt64? = nil,
+      @map_search : String? = nil,
+      @download_assets : Bool = false,
+      @asset_types : Array(AssetCategory) = [] of AssetCategory,
+      @max_asset_size : UInt64? = nil,
+      @browser : BrowserConfig = BrowserConfig.from_json("{}"),
+      @proxy : ProxyConfig? = nil,
+      @user_agents : Array(String) = [] of String,
+      @capture_screenshot : Bool = false,
+      @follow_document_urls : Bool = false,
+      @document_url_depth : UInt32? = nil,
+      @download_documents : Bool = true,
+      @document_max_size : UInt64? = nil,
+      @document_mime_types : Array(String) = [] of String,
+      @warc_output : String? = nil,
+      @browser_profile : String? = nil,
+      @save_browser_profile : Bool = false,
+      @ssrf : SsrfPolicy = SsrfPolicy.from_json("{}")
+    )
+    end
   end
 
   # Browser-specific extras populated when the native browser backend was used.
@@ -360,6 +661,12 @@ module Crawlberg
     # All non-expired cookies present in the browser's cookie jar after
     # navigation completes (includes both prior cookies and server Set-Cookie).
     getter cookies : Array(CookieInfo) = [] of CookieInfo
+    def initialize(
+      @eval_result : JSON::Any? = nil,
+      @network_events : Array(ResponseMeta) = [] of ResponseMeta,
+      @cookies : Array(CookieInfo) = [] of CookieInfo
+    )
+    end
   end
 
   # A downloaded non-HTML document (PDF, DOCX, image, code file, etc.).
@@ -381,6 +688,15 @@ module Crawlberg
     getter content_hash : String = ""
     # Selected response headers.
     getter headers : Hash(String, String) = {} of String => String
+    def initialize(
+      @url : String = "",
+      @mime_type : String = "",
+      @size : UInt64 = 0,
+      @filename : String? = nil,
+      @content_hash : String = "",
+      @headers : Hash(String, String) = {} of String => String
+    )
+    end
   end
 
   # Result of executing a sequence of page interaction actions.
@@ -392,6 +708,12 @@ module Crawlberg
     getter final_html : String = ""
     # Final page URL (may have changed due to navigation).
     getter final_url : String = ""
+    def initialize(
+      @action_results : Array(ActionResult) = [] of ActionResult,
+      @final_html : String = "",
+      @final_url : String = ""
+    )
+    end
   end
 
   # Result from a single page action execution.
@@ -407,6 +729,14 @@ module Crawlberg
     getter data : JSON::Any?
     # Error message if the action failed.
     getter error : String?
+    def initialize(
+      @action_index : UInt64 = 0,
+      @action_type : String = "",
+      @success : Bool = false,
+      @data : JSON::Any? = nil,
+      @error : String? = nil
+    )
+    end
   end
 
   # The result of a single-page scrape operation.
@@ -469,6 +799,37 @@ module Crawlberg
     # Browser-specific extras (eval result, network events, cookies). Only
     # populated when `BrowserBackend::Native` was used for this request.
     getter browser : BrowserExtras?
+    def initialize(
+      @status_code : UInt16 = 0,
+      @final_url : String = "",
+      @content_type : String = "",
+      @html : String = "",
+      @body_size : UInt64 = 0,
+      @metadata : PageMetadata = PageMetadata.from_json("{}"),
+      @links : Array(LinkInfo) = [] of LinkInfo,
+      @images : Array(ImageInfo) = [] of ImageInfo,
+      @feeds : Array(FeedInfo) = [] of FeedInfo,
+      @json_ld : Array(JsonLdEntry) = [] of JsonLdEntry,
+      @is_allowed : Bool = false,
+      @crawl_delay : UInt64? = nil,
+      @noindex_detected : Bool = false,
+      @nofollow_detected : Bool = false,
+      @x_robots_tag : String? = nil,
+      @is_pdf : Bool = false,
+      @was_skipped : Bool = false,
+      @detected_charset : String? = nil,
+      @auth_header_sent : Bool = false,
+      @response_meta : ResponseMeta? = nil,
+      @assets : Array(DownloadedAsset) = [] of DownloadedAsset,
+      @js_render_hint : Bool = false,
+      @browser_used : Bool = false,
+      @markdown : MarkdownResult? = nil,
+      @extracted_data : JSON::Any? = nil,
+      @extraction_meta : ExtractionMeta? = nil,
+      @downloaded_document : DownloadedDocument? = nil,
+      @browser : BrowserExtras? = nil
+    )
+    end
   end
 
   # The result of crawling a single page during a crawl operation.
@@ -516,6 +877,30 @@ module Crawlberg
     getter downloaded_document : DownloadedDocument?
     # Whether the browser fallback was used to fetch this page.
     getter browser_used : Bool = false
+    def initialize(
+      @url : String = "",
+      @normalized_url : String = "",
+      @status_code : UInt16 = 0,
+      @content_type : String = "",
+      @html : String = "",
+      @body_size : UInt64 = 0,
+      @metadata : PageMetadata = PageMetadata.from_json("{}"),
+      @links : Array(LinkInfo) = [] of LinkInfo,
+      @images : Array(ImageInfo) = [] of ImageInfo,
+      @feeds : Array(FeedInfo) = [] of FeedInfo,
+      @json_ld : Array(JsonLdEntry) = [] of JsonLdEntry,
+      @depth : UInt64 = 0,
+      @stayed_on_domain : Bool = false,
+      @was_skipped : Bool = false,
+      @is_pdf : Bool = false,
+      @detected_charset : String? = nil,
+      @markdown : MarkdownResult? = nil,
+      @extracted_data : JSON::Any? = nil,
+      @extraction_meta : ExtractionMeta? = nil,
+      @downloaded_document : DownloadedDocument? = nil,
+      @browser_used : Bool = false
+    )
+    end
   end
 
   # The result of a multi-page crawl operation.
@@ -537,6 +922,17 @@ module Crawlberg
     getter stayed_on_domain : Bool = false
     # Whether the browser fallback was used for any page in this crawl.
     getter browser_used : Bool = false
+    def initialize(
+      @pages : Array(CrawlPageResult) = [] of CrawlPageResult,
+      @final_url : String = "",
+      @redirect_count : UInt64 = 0,
+      @was_skipped : Bool = false,
+      @error : String? = nil,
+      @cookies : Array(CookieInfo) = [] of CookieInfo,
+      @stayed_on_domain : Bool = false,
+      @browser_used : Bool = false
+    )
+    end
   end
 
   # A URL entry from a sitemap.
@@ -550,6 +946,13 @@ module Crawlberg
     getter changefreq : String?
     # The priority, if present.
     getter priority : String?
+    def initialize(
+      @url : String = "",
+      @lastmod : String? = nil,
+      @changefreq : String? = nil,
+      @priority : String? = nil
+    )
+    end
   end
 
   # The result of a map operation, containing discovered URLs.
@@ -557,6 +960,10 @@ module Crawlberg
     include JSON::Serializable
     # The list of discovered URLs.
     getter urls : Array(SitemapUrl) = [] of SitemapUrl
+    def initialize(
+      @urls : Array(SitemapUrl) = [] of SitemapUrl
+    )
+    end
   end
 
   # Rich markdown conversion result from HTML processing.
@@ -579,6 +986,15 @@ module Crawlberg
     getter citations : Bool = false
     # Content-filtered markdown optimized for LLM consumption.
     getter fit_content : String?
+    def initialize(
+      @content : String = "",
+      @document_structure : JSON::Any? = nil,
+      @tables : Array(JSON::Any) = [] of JSON::Any,
+      @warnings : Array(String) = [] of String,
+      @citations : Bool = false,
+      @fit_content : String? = nil
+    )
+    end
   end
 
   # Information about a link found on a page.
@@ -594,6 +1010,14 @@ module Crawlberg
     getter rel : String?
     # Whether the link has `rel="nofollow"`.
     getter nofollow : Bool = false
+    def initialize(
+      @url : String = "",
+      @text : String = "",
+      @link_type : LinkType = LinkType::Internal,
+      @rel : String? = nil,
+      @nofollow : Bool = false
+    )
+    end
   end
 
   # Information about an image found on a page.
@@ -608,8 +1032,16 @@ module Crawlberg
     # The height attribute, if present and parseable.
     getter height : UInt32?
     # The source of the image reference.
-    @[JSON::Field(converter: ImageSourceConverter)]
+    @[JSON::Field(converter: Crawlberg::ImageSourceConverter)]
     getter source : ImageSource = ImageSource::Img
+    def initialize(
+      @url : String = "",
+      @alt : String? = nil,
+      @width : UInt32? = nil,
+      @height : UInt32? = nil,
+      @source : ImageSource = ImageSource::Img
+    )
+    end
   end
 
   # Information about a feed link found on a page.
@@ -621,6 +1053,12 @@ module Crawlberg
     getter title : String?
     # The type of feed.
     getter feed_type : FeedType = FeedType::Rss
+    def initialize(
+      @url : String = "",
+      @title : String? = nil,
+      @feed_type : FeedType = FeedType::Rss
+    )
+    end
   end
 
   # A JSON-LD structured data entry found on a page.
@@ -632,6 +1070,12 @@ module Crawlberg
     getter name : String?
     # The raw JSON-LD string.
     getter raw : String = ""
+    def initialize(
+      @schema_type : String = "",
+      @name : String? = nil,
+      @raw : String = ""
+    )
+    end
   end
 
   # Information about an HTTP cookie received from a response.
@@ -645,6 +1089,13 @@ module Crawlberg
     getter domain : String?
     # The cookie path, if specified.
     getter path : String?
+    def initialize(
+      @name : String = "",
+      @value : String = "",
+      @domain : String? = nil,
+      @path : String? = nil
+    )
+    end
   end
 
   # A downloaded asset from a page.
@@ -662,6 +1113,15 @@ module Crawlberg
     getter asset_category : AssetCategory = AssetCategory::Image
     # The HTML tag that referenced this asset (e.g., "link", "script", "img").
     getter html_tag : String?
+    def initialize(
+      @url : String = "",
+      @content_hash : String = "",
+      @mime_type : String? = nil,
+      @size : UInt64 = 0,
+      @asset_category : AssetCategory = AssetCategory::Image,
+      @html_tag : String? = nil
+    )
+    end
   end
 
   # Article metadata extracted from `article:*` Open Graph tags.
@@ -677,6 +1137,14 @@ module Crawlberg
     getter section : String?
     # The article tags.
     getter tags : Array(String) = [] of String
+    def initialize(
+      @published_time : String? = nil,
+      @modified_time : String? = nil,
+      @author : String? = nil,
+      @section : String? = nil,
+      @tags : Array(String) = [] of String
+    )
+    end
   end
 
   # An hreflang alternate link entry.
@@ -686,6 +1154,11 @@ module Crawlberg
     getter lang : String = ""
     # The URL for this language variant.
     getter url : String = ""
+    def initialize(
+      @lang : String = "",
+      @url : String = ""
+    )
+    end
   end
 
   # Information about a favicon or icon link.
@@ -699,6 +1172,13 @@ module Crawlberg
     getter sizes : String?
     # The MIME type, if present.
     getter mime_type : String?
+    def initialize(
+      @url : String = "",
+      @rel : String = "",
+      @sizes : String? = nil,
+      @mime_type : String? = nil
+    )
+    end
   end
 
   # A heading element extracted from the page.
@@ -708,6 +1188,11 @@ module Crawlberg
     getter level : UInt8 = 0
     # The heading text content.
     getter text : String = ""
+    def initialize(
+      @level : UInt8 = 0,
+      @text : String = ""
+    )
+    end
   end
 
   # Response metadata extracted from HTTP headers.
@@ -727,6 +1212,16 @@ module Crawlberg
     getter content_language : String?
     # The Content-Encoding header value.
     getter content_encoding : String?
+    def initialize(
+      @etag : String? = nil,
+      @last_modified : String? = nil,
+      @cache_control : String? = nil,
+      @server : String? = nil,
+      @x_powered_by : String? = nil,
+      @content_language : String? = nil,
+      @content_encoding : String? = nil
+    )
+    end
   end
 
   # Metadata extracted from an HTML page's `<meta>` tags and `<title>` element.
@@ -818,6 +1313,52 @@ module Crawlberg
     getter headings : Array(HeadingInfo)?
     # Computed word count of the page body text.
     getter word_count : UInt64?
+    def initialize(
+      @title : String? = nil,
+      @description : String? = nil,
+      @canonical_url : String? = nil,
+      @keywords : String? = nil,
+      @author : String? = nil,
+      @viewport : String? = nil,
+      @theme_color : String? = nil,
+      @generator : String? = nil,
+      @robots : String? = nil,
+      @html_lang : String? = nil,
+      @html_dir : String? = nil,
+      @og_title : String? = nil,
+      @og_type : String? = nil,
+      @og_image : String? = nil,
+      @og_description : String? = nil,
+      @og_url : String? = nil,
+      @og_site_name : String? = nil,
+      @og_locale : String? = nil,
+      @og_video : String? = nil,
+      @og_audio : String? = nil,
+      @og_locale_alternates : Array(String)? = nil,
+      @twitter_card : String? = nil,
+      @twitter_title : String? = nil,
+      @twitter_description : String? = nil,
+      @twitter_image : String? = nil,
+      @twitter_site : String? = nil,
+      @twitter_creator : String? = nil,
+      @dc_title : String? = nil,
+      @dc_creator : String? = nil,
+      @dc_subject : String? = nil,
+      @dc_description : String? = nil,
+      @dc_publisher : String? = nil,
+      @dc_date : String? = nil,
+      @dc_type : String? = nil,
+      @dc_format : String? = nil,
+      @dc_identifier : String? = nil,
+      @dc_language : String? = nil,
+      @dc_rights : String? = nil,
+      @article : ArticleMetadata? = nil,
+      @hreflangs : Array(HreflangEntry)? = nil,
+      @favicons : Array(FaviconInfo)? = nil,
+      @headings : Array(HeadingInfo)? = nil,
+      @word_count : UInt64? = nil
+    )
+    end
   end
 
   # Request to begin a single-URL streaming crawl.
@@ -829,6 +1370,10 @@ module Crawlberg
     include JSON::Serializable
     # The seed URL to crawl.
     getter url : String = ""
+    def initialize(
+      @url : String = ""
+    )
+    end
   end
 
   # Request to begin a multi-URL streaming crawl.
@@ -841,6 +1386,10 @@ module Crawlberg
     # The seed URLs to crawl. Each URL is followed independently up to the
     # engine's configured depth.
     getter urls : Array(String) = [] of String
+    def initialize(
+      @urls : Array(String) = [] of String
+    )
+    end
   end
 
   # Result of citation conversion.
@@ -850,6 +1399,11 @@ module Crawlberg
     getter content : String = ""
     # Numbered reference list: (index, url, text).
     getter references : Array(CitationReference) = [] of CitationReference
+    def initialize(
+      @content : String = "",
+      @references : Array(CitationReference) = [] of CitationReference
+    )
+    end
   end
 
   # A single numbered reference in a citation list — produced by the citation
@@ -862,6 +1416,12 @@ module Crawlberg
     getter url : String = ""
     # Human-readable anchor text or title for the reference.
     getter text : String = ""
+    def initialize(
+      @index : UInt64 = 0,
+      @url : String = "",
+      @text : String = ""
+    )
+    end
   end
 
   # Opaque handle to a configured crawl engine.
@@ -869,7 +1429,7 @@ module Crawlberg
   # Constructed via [`create_engine`] with an optional [`CrawlConfig`].
   # Default implementations for all pluggable components are used internally.
   class CrawlEngineHandle
-    # Wraps the owned FFI handle; do not construct directly.
+    # Wraps the FFI handle; do not construct directly.
     def initialize(@handle : Void*)
     end
     # Raw handle for passing back across the C ABI.
@@ -950,6 +1510,12 @@ module Crawlberg
     getter result : ScrapeResult?
     # The error message, if the scrape failed.
     getter error : String?
+    def initialize(
+      @url : String = "",
+      @result : ScrapeResult? = nil,
+      @error : String? = nil
+    )
+    end
   end
 
   # Result from a single URL in a batch crawl operation.
@@ -961,6 +1527,12 @@ module Crawlberg
     getter result : CrawlResult?
     # The error message, if the crawl failed.
     getter error : String?
+    def initialize(
+      @url : String = "",
+      @result : CrawlResult? = nil,
+      @error : String? = nil
+    )
+    end
   end
 
   # Aggregate result of a batch scrape, exposing per-URL results plus precomputed counts.
@@ -977,6 +1549,13 @@ module Crawlberg
     getter completed_count : UInt64 = 0
     # Number of URLs whose scrape failed (`error` is `Some`).
     getter failed_count : UInt64 = 0
+    def initialize(
+      @results : Array(BatchScrapeResult) = [] of BatchScrapeResult,
+      @total_count : UInt64 = 0,
+      @completed_count : UInt64 = 0,
+      @failed_count : UInt64 = 0
+    )
+    end
   end
 
   # Aggregate result of a batch crawl, exposing per-URL results plus precomputed counts.
@@ -993,6 +1572,13 @@ module Crawlberg
     getter completed_count : UInt64 = 0
     # Number of seed URLs whose crawl failed (`error` is `Some`).
     getter failed_count : UInt64 = 0
+    def initialize(
+      @results : Array(BatchCrawlResult) = [] of BatchCrawlResult,
+      @total_count : UInt64 = 0,
+      @completed_count : UInt64 = 0,
+      @failed_count : UInt64 = 0
+    )
+    end
   end
 
   # SSRF policy configuration.
@@ -1002,220 +1588,11 @@ module Crawlberg
     getter deny_private : Bool = true
     # Maximum number of HTTP redirects to follow during validation.
     getter max_redirects : UInt8 = 5
-  end
-
-  # When to use the headless browser fallback.
-  enum BrowserMode
-    Auto
-    Always
-    Never
-    Stealth
-  end
-
-  # Wait strategy for browser page rendering.
-  enum BrowserWait
-    NetworkIdle
-    Selector
-    Fixed
-  end
-
-  # Browser backend used for JavaScript rendering.
-  enum BrowserBackend
-    Chromiumoxide
-    Native
-  end
-
-  # Authentication configuration.
-  abstract class AuthConfig
-    include JSON::Serializable
-    use_json_discriminator "type", {"basic" => AuthConfig::Basic, "bearer" => AuthConfig::Bearer, "header" => AuthConfig::Header}
-  end
-
-  class AuthConfig::Basic < AuthConfig
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "basic"
-    getter username : String
-    getter password : String
-  end
-
-  class AuthConfig::Bearer < AuthConfig
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "bearer"
-    getter token : String
-  end
-
-  class AuthConfig::Header < AuthConfig
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "header"
-    getter name : String
-    getter value : String
-  end
-
-  # The classification of a link.
-  enum LinkType
-    Internal
-    External
-    Anchor
-    Document
-  end
-
-  # The source of an image reference.
-  enum ImageSource
-    Img
-    PictureSource
-    OgImage
-    TwitterImage
-  end
-  module ImageSourceConverter
-    def self.from_json(pull : JSON::PullParser) : ImageSource
-      case pull.read_string
-      when "img" then ImageSource::Img
-      when "picture_source" then ImageSource::PictureSource
-      when "og:image" then ImageSource::OgImage
-      when "twitter:image" then ImageSource::TwitterImage
-      else pull.raise "Unknown ImageSource value"
-      end
+    def initialize(
+      @deny_private : Bool = true,
+      @max_redirects : UInt8 = 5
+    )
     end
-    def self.to_json(value : ImageSource, json : JSON::Builder)
-      json.string(case value
-      when ImageSource::Img then "img"
-      when ImageSource::PictureSource then "picture_source"
-      when ImageSource::OgImage then "og:image"
-      when ImageSource::TwitterImage then "twitter:image"
-      end)
-    end
-  end
-
-  # The type of a feed (RSS, Atom, or JSON Feed).
-  enum FeedType
-    Rss
-    Atom
-    JsonFeed
-  end
-
-  # The category of a downloaded asset.
-  enum AssetCategory
-    Document
-    Image
-    Audio
-    Video
-    Font
-    Stylesheet
-    Script
-    Archive
-    Data
-    Other
-  end
-
-  # An event emitted during a streaming crawl operation.
-  #
-  # Not available on `wasm32` targets — streaming requires native concurrency
-  # primitives (tokio channels, `JoinSet`) that are not supported on wasm32.
-  #
-  # Delivered to bindings through each target's native streaming idiom.
-  abstract class CrawlEvent
-    include JSON::Serializable
-    use_json_discriminator "type", {"page" => CrawlEvent::Page, "error" => CrawlEvent::Error, "complete" => CrawlEvent::Complete}
-  end
-
-  class CrawlEvent::Page < CrawlEvent
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "page"
-    getter result : CrawlPageResult
-  end
-
-  class CrawlEvent::Error < CrawlEvent
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "error"
-    getter url : String
-    getter error : String
-  end
-
-  class CrawlEvent::Complete < CrawlEvent
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "complete"
-    getter pages_crawled : UInt64
-  end
-
-  # A single page interaction action.
-  #
-  # Actions are serialized with a `type` tag using camelCase naming,
-  # except `ExecuteJs` which is explicitly renamed to `"executeJs"`.
-  abstract class PageAction
-    include JSON::Serializable
-    use_json_discriminator "type", {"click" => PageAction::Click, "type" => PageAction::TypeText, "press" => PageAction::Press, "scroll" => PageAction::Scroll, "wait" => PageAction::Wait, "screenshot" => PageAction::Screenshot, "executeJs" => PageAction::ExecuteJs, "scrape" => PageAction::Scrape}
-  end
-
-  class PageAction::Click < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "click"
-    getter selector : String
-  end
-
-  class PageAction::TypeText < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "type"
-    getter selector : String
-    getter text : String
-  end
-
-  class PageAction::Press < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "press"
-    getter key : String
-  end
-
-  class PageAction::Scroll < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "scroll"
-    getter direction : ScrollDirection
-    getter selector : String?
-    getter amount : Int64?
-  end
-
-  class PageAction::Wait < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "wait"
-    getter milliseconds : Int64?
-    getter selector : String?
-  end
-
-  class PageAction::Screenshot < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "screenshot"
-    @[JSON::Field(key: "fullPage")]
-    getter full_page : Bool?
-  end
-
-  class PageAction::ExecuteJs < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "executeJs"
-    getter script : String
-  end
-
-  class PageAction::Scrape < PageAction
-    include JSON::Serializable
-    @[JSON::Field(key: "type")]
-    getter type_ : String = "scrape"
-  end
-
-  # Direction for a scroll action.
-  enum ScrollDirection
-    Up
-    Down
   end
 
   # Errors that can occur during crawling, scraping, or mapping operations.
@@ -1229,7 +1606,11 @@ module Crawlberg
   # Convert markdown links to numbered citations.
   def self.generate_citations(markdown : String) : CitationResult
     __ptr = LibCberg.generate_citations(markdown)
-    raise "LibCberg.generate_citations returned a null pointer" if __ptr.null?
+    if __ptr.null?
+      __ctx_ptr = LibCberg.last_error_context
+      raise String.new(__ctx_ptr) unless __ctx_ptr.null?
+      raise "LibCberg.generate_citations returned a null pointer"
+    end
     __json_ptr = LibCberg.citation_result_to_json(__ptr)
     LibCberg.citation_result_free(__ptr)
     __json = String.new(__json_ptr)
@@ -1238,7 +1619,7 @@ module Crawlberg
   end
 
   # Create a new crawl engine with the given configuration.
-  def self.create_engine(config : CrawlConfig?) : CrawlEngineHandle
+  def self.create_engine(config : CrawlConfig? = nil) : CrawlEngineHandle
     __handle_config = config.nil? ? Pointer(LibCberg::CrawlConfig).null : LibCberg.crawl_config_from_json(config.not_nil!.to_json)
     __ptr = LibCberg.create_engine(__handle_config)
     raise "LibCberg.create_engine returned a null pointer" if __ptr.null?
@@ -1249,7 +1630,11 @@ module Crawlberg
   # Scrape a single URL, returning extracted page data.
   def self.scrape(engine : CrawlEngineHandle, url : String) : ScrapeResult
     __ptr = LibCberg.scrape(engine.to_unsafe, url)
-    raise "LibCberg.scrape returned a null pointer" if __ptr.null?
+    if __ptr.null?
+      __ctx_ptr = LibCberg.last_error_context
+      raise String.new(__ctx_ptr) unless __ctx_ptr.null?
+      raise "LibCberg.scrape returned a null pointer"
+    end
     __json_ptr = LibCberg.scrape_result_to_json(__ptr)
     LibCberg.scrape_result_free(__ptr)
     __json = String.new(__json_ptr)
@@ -1260,7 +1645,11 @@ module Crawlberg
   # Crawl a website starting from `url`, following links up to the configured depth.
   def self.crawl(engine : CrawlEngineHandle, url : String) : CrawlResult
     __ptr = LibCberg.crawl(engine.to_unsafe, url)
-    raise "LibCberg.crawl returned a null pointer" if __ptr.null?
+    if __ptr.null?
+      __ctx_ptr = LibCberg.last_error_context
+      raise String.new(__ctx_ptr) unless __ctx_ptr.null?
+      raise "LibCberg.crawl returned a null pointer"
+    end
     __json_ptr = LibCberg.crawl_result_to_json(__ptr)
     LibCberg.crawl_result_free(__ptr)
     __json = String.new(__json_ptr)
@@ -1271,7 +1660,11 @@ module Crawlberg
   # Discover all pages on a website by following links and sitemaps.
   def self.map_urls(engine : CrawlEngineHandle, url : String) : MapResult
     __ptr = LibCberg.map_urls(engine.to_unsafe, url)
-    raise "LibCberg.map_urls returned a null pointer" if __ptr.null?
+    if __ptr.null?
+      __ctx_ptr = LibCberg.last_error_context
+      raise String.new(__ctx_ptr) unless __ctx_ptr.null?
+      raise "LibCberg.map_urls returned a null pointer"
+    end
     __json_ptr = LibCberg.map_result_to_json(__ptr)
     LibCberg.map_result_free(__ptr)
     __json = String.new(__json_ptr)
@@ -1282,7 +1675,11 @@ module Crawlberg
   # Execute browser actions on a single page.
   def self.interact(engine : CrawlEngineHandle, url : String, actions : Array(PageAction)) : InteractionResult
     __ptr = LibCberg.interact(engine.to_unsafe, url, actions.to_json)
-    raise "LibCberg.interact returned a null pointer" if __ptr.null?
+    if __ptr.null?
+      __ctx_ptr = LibCberg.last_error_context
+      raise String.new(__ctx_ptr) unless __ctx_ptr.null?
+      raise "LibCberg.interact returned a null pointer"
+    end
     __json_ptr = LibCberg.interaction_result_to_json(__ptr)
     LibCberg.interaction_result_free(__ptr)
     __json = String.new(__json_ptr)
@@ -1293,7 +1690,11 @@ module Crawlberg
   # Scrape multiple URLs concurrently.
   def self.batch_scrape(engine : CrawlEngineHandle, urls : Array(String)) : BatchScrapeResults
     __ptr = LibCberg.batch_scrape(engine.to_unsafe, urls.to_json)
-    raise "LibCberg.batch_scrape returned a null pointer" if __ptr.null?
+    if __ptr.null?
+      __ctx_ptr = LibCberg.last_error_context
+      raise String.new(__ctx_ptr) unless __ctx_ptr.null?
+      raise "LibCberg.batch_scrape returned a null pointer"
+    end
     __json_ptr = LibCberg.batch_scrape_results_to_json(__ptr)
     LibCberg.batch_scrape_results_free(__ptr)
     __json = String.new(__json_ptr)
@@ -1304,7 +1705,11 @@ module Crawlberg
   # Crawl multiple seed URLs concurrently, each following links to configured depth.
   def self.batch_crawl(engine : CrawlEngineHandle, urls : Array(String)) : BatchCrawlResults
     __ptr = LibCberg.batch_crawl(engine.to_unsafe, urls.to_json)
-    raise "LibCberg.batch_crawl returned a null pointer" if __ptr.null?
+    if __ptr.null?
+      __ctx_ptr = LibCberg.last_error_context
+      raise String.new(__ctx_ptr) unless __ctx_ptr.null?
+      raise "LibCberg.batch_crawl returned a null pointer"
+    end
     __json_ptr = LibCberg.batch_crawl_results_to_json(__ptr)
     LibCberg.batch_crawl_results_free(__ptr)
     __json = String.new(__json_ptr)
