@@ -1397,7 +1397,12 @@ jobs:
 
       - uses: xberg-io/actions/setup-rust@v1
 
-      - uses: xberg-io/actions/build-crystal-package@v1
+      # Interim fork reference. build-crystal-package does not exist on
+      # xberg-io/actions yet, and this repo's floating v1 tag predates it, so
+      # @v1 would resolve to a tree without the action. Switch back to
+      # xberg-io/actions/build-crystal-package@v1 once the action lands
+      # upstream, then drop the dsisnero/actions crystal-v1 tag.
+      - uses: dsisnero/actions/build-crystal-package@crystal-v1
         with:
           ffi-crate: crawlberg-ffi
           package-dir: packages/crystal
