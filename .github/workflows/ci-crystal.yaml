@@ -22,6 +22,11 @@ on:
       - "crates/crawlberg-ffi/**"
       - ".github/workflows/ci-crystal.yaml"
   workflow_dispatch:
+    inputs:
+      crystal_version:
+        description: "Crystal version to pin (e.g. 'latest', 'nightly', '1.21.1'). Empty means the action default (latest)."
+        required: false
+        type: string
 
 concurrency:
   group: ci-crystal-${{ github.ref }}
@@ -47,3 +52,4 @@ jobs:
         with:
           ffi-crate: crawlberg-ffi
           package-dir: packages/crystal
+          crystal-version: ${{ inputs.crystal_version || 'latest' }}
