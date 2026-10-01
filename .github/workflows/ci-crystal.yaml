@@ -1,0 +1,49 @@
+name: CI Crystal
+
+# Fast smoke check for the Crystal shard in packages/crystal: builds the FFI
+# crate the shard links against, then runs `crystal build` on the shard itself.
+#
+# The publish workflow runs the same check in its `crystal-package` job, but
+# that pipeline needs release credentials and a real tag, so it cannot exercise
+# a change on a normal push or PR. This workflow is the cheap, always-available
+# signal — it publishes nothing and needs no secrets.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/crystal/**"
+      - "crates/crawlberg-ffi/**"
+      - ".github/workflows/ci-crystal.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/crystal/**"
+      - "crates/crawlberg-ffi/**"
+      - ".github/workflows/ci-crystal.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-crystal-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  crystal-package:
+    name: Build Crystal package (smoke check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: xberg-io/actions/setup-rust@v1
+
+      # Interim fork reference. build-crystal-package does not exist on
+      # xberg-io/actions yet. Switch back to
+      # xberg-io/actions/build-crystal-package@v1 once the action lands
+      # upstream, then drop the dsisnero/actions crystal-v1 tag.
+      - uses: dsisnero/actions/build-crystal-package@crystal-v1
+        with:
+          ffi-crate: crawlberg-ffi
+          package-dir: packages/crystal

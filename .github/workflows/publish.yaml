@@ -108,7 +108,11 @@ jobs:
 
       - name: Resolve release metadata
         id: meta
-        uses: xberg-io/actions/prepare-release-metadata@v1
+        # Interim fork reference. Upstream prepare-release-metadata does not
+        # emit the `release_crystal` output, so the crystal-package gate would
+        # never open; the fork adds it (deriving the flag from the presence of
+        # packages/crystal). Switch back to @v1 once that lands upstream.
+        uses: dsisnero/actions/prepare-release-metadata@crystal-v1
 
       - name: Ensure GitHub Release exists for tag
         if: ${{ steps.meta.outputs.is_tag == 'true' && steps.meta.outputs.dry_run != 'true' }}
