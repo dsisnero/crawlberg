@@ -1411,6 +1411,118 @@ jobs:
           ffi-crate: crawlberg-ffi
           package-dir: packages/crystal
 
+  # Mirrors publish-zig's split: crystal-package above is a smoke check only
+  # (build-zig-package has the same shape), and this job is what actually
+  # ships a downloadable artifact. Without it Crystal was the only language
+  # whose build output nothing consumed.
+  publish-crystal:
+    name: Publish Crystal platform archives to GitHub Release
+    needs: [prepare, crystal-package, c-ffi-libraries]
+    if: ${{ needs.prepare.outputs.release_crystal == 'true' && needs.prepare.outputs.is_tag == 'true' && needs.c-ffi-libraries.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: xberg-io
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          submodules: recursive
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: c-ffi-*
+          path: dist/c-ffi-downloaded
+          merge-multiple: false
+
+      - name: Lay out FFI artifacts for multi-platform Crystal bundle
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # c-ffi tarballs are staged as crawlberg-ffi-v${VERSION}-<target>.tar.gz
+          # and each contains <stage>/lib/* plus <stage>/include/*.h.
+          #
+          # The generated shard links a bare "-lcrawlberg_ffi"
+          # (packages/crystal/src/crawlberg.cr), and build-crystal-package
+          # stages the shared library into packages/crystal/native/. So each
+          # archive below drops a ready-to-link native/ dir straight into the
+          # shard: tar -xzf <archive> -C packages/crystal/
+          #
+          # Stage names carry the Rust target triple, not the matrix "platform"
+          # label, because c-ffi-libraries names them crawlberg-ffi-v${VERSION}-
+          # ${TARGET}. Keys below are triples; values follow the publish-zig RID
+          # convention (linux-x64, osx-arm64, ...).
+          rid_for() {
+            case "$1" in
+            x86_64-unknown-linux-gnu) echo "linux-x64" ;;
+            aarch64-unknown-linux-gnu) echo "linux-arm64" ;;
+            aarch64-apple-darwin) echo "osx-arm64" ;;
+            x86_64-apple-darwin) echo "osx-x64" ;;
+            x86_64-pc-windows-msvc) echo "win-x64" ;;
+            *) return 1 ;;
+            esac
+          }
+          out="crystal-artifacts"
+          mkdir -p "$out"
+          produced=0
+          for art in dist/c-ffi-downloaded/*/crawlberg-ffi-v"${VERSION}"-*.tar.gz; do
+            [ -f "$art" ] || continue
+            target=$(basename "$art" .tar.gz)
+            target="${target#crawlberg-ffi-v"${VERSION}"-}"
+            rid=$(rid_for "$target") || {
+              echo "::warning::Unknown c-ffi target '$target' — skipping"
+              continue
+            }
+            tmp=$(mktemp -d)
+            tar -xzf "$art" -C "$tmp"
+            stage_root=$(find "$tmp" -maxdepth 1 -mindepth 1 -type d | head -1)
+            mkdir -p "$out/$rid/native"
+            # Ship shared libraries only. The shard links dynamically
+            # (-lcrawlberg_ffi against native/), so the per-platform static
+            # archives (libcrawlberg_ffi.a, hundreds of MB each) are dead
+            # weight. Bundling all platforms' .a produced a 1.15GB tarball
+            # whose upload to uploads.github.com failed.
+            shopt -s nullglob
+            copied=0
+            for lib in "$stage_root"/lib/*.so "$stage_root"/lib/*.so.* \
+                       "$stage_root"/lib/*.dylib "$stage_root"/lib/*.dll; do
+              cp "$lib" "$out/$rid/native/"
+              copied=1
+            done
+            shopt -u nullglob
+            if [ "$copied" -eq 0 ]; then
+              echo "::warning::no shared library found for $rid under $stage_root/lib — skipping"
+              rm -rf "$tmp"
+              continue
+            fi
+            mkdir -p "$out/$rid/include"
+            cp "$stage_root"/include/*.h "$out/$rid/include/" 2>/dev/null || true
+            tar -czf "$out/crawlberg-crystal-${rid}.tar.gz" -C "$out/$rid" native include
+            rm -rf "${out:?}/${rid:?}"
+            rm -rf "${tmp:?}"
+            produced=$((produced + 1))
+          done
+          echo "::notice::produced $produced Crystal platform archives"
+          if [ "$produced" -eq 0 ]; then
+            echo "::error::no Crystal platform archives were produced"
+            exit 1
+          fi
+          ls -la "$out"
+
+      - uses: xberg-io/actions/upload-release-assets@v1
+        with:
+          tag: ${{ needs.prepare.outputs.tag }}
+          working-directory: crystal-artifacts
+          assets: crawlberg-crystal-*.tar.gz
+          dry-run: ${{ needs.prepare.outputs.dry_run }}
+          token: ${{ steps.app-token.outputs.token }}
+
   upload-go-release:
     name: Upload Go FFI archives to GitHub Release
     needs: [prepare, go-ffi-libraries]
@@ -2471,6 +2583,7 @@ jobs:
       - upload-elixir-release
       - upload-php-pie-release
       - upload-swift-release
+      - publish-crystal
       - publish-swift-checksums
     if: |
       always() &&
@@ -2516,6 +2629,7 @@ jobs:
       - upload-elixir-release
       - upload-php-pie-release
       - upload-swift-release
+      - publish-crystal
       - release-finalize
     if: |
       always() &&
